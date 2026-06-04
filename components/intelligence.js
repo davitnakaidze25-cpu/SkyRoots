@@ -87,7 +87,10 @@ function renderMarkdown(text) {
 }
 
 // ─── Main Render ──────────────────────────────────────────────────────────────
+let currentZoom = 1.0;
+
 export function renderIntelligence(container) {
+    currentZoom = 1.0;
     container.innerHTML = `
     <div class="intel-header">
         <h2 class="screen-title">Grooty Intelligence</h2>
@@ -96,8 +99,14 @@ export function renderIntelligence(container) {
 
     <div class="camera-card card" style="margin-bottom: 15px; padding: 12px; text-align: center;">
         <div class="camera-stream-container" style="background: #111; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 4/3; max-height: 280px; margin: 0 auto 12px;">
-            <iframe src="http://192.168.4.1/" style="width: 100%; height: 100%; border: none;" title="Live Bio-Dome Stream"></iframe>
+            <iframe id="cameraFrame" src="http://192.168.4.1/" style="width: 100%; height: 100%; border: none; transition: transform 0.2s ease; transform-origin: center center;" title="Live Bio-Dome Stream"></iframe>
             <div class="cam-badge" style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; font-size: 11px; color: #00ff66; font-family: monospace;">● LIVE (OFFLINE-NET)</div>
+            
+            <div class="cam-controls" style="position: absolute; bottom: 8px; right: 8px; display: flex; gap: 6px; background: rgba(0,0,0,0.6); padding: 4px; border-radius: 6px; backdrop-filter: blur(4px); z-index: 10; border: 1px solid rgba(255,255,255,0.15);">
+                <button id="btnZoomOut" style="background: none; border: none; color: #fff; font-size: 16px; font-weight: bold; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">−</button>
+                <span id="zoomLevelDisplay" style="color: #fff; font-size: 11px; font-family: monospace; display: flex; align-items: center; justify-content: center; min-width: 32px; font-weight: bold;">1.00x</span>
+                <button id="btnZoomIn" style="background: none; border: none; color: #fff; font-size: 16px; font-weight: bold; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">+</button>
+            </div>
         </div>
         
         <div id="healthLogStatus" style="font-size: 12px; margin-top: 6px; color: #00ff66; font-family: monospace; font-weight: bold;">healthy:plant identificated:lettuce</div>
@@ -148,12 +157,29 @@ function setupEventListeners() {
     const sendBtn = document.getElementById('chatSendBtn');
     const input = document.getElementById('chatInput');
     const micBtn = document.getElementById('chatMicBtn');
+    const zoomInBtn = document.getElementById('btnZoomIn');
+    const zoomOutBtn = document.getElementById('btnZoomOut');
 
     if (sendBtn) sendBtn.addEventListener('click', handleSend);
     if (input) input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
     });
     if (micBtn) micBtn.addEventListener('click', startVoice);
+
+    if (zoomInBtn) zoomInBtn.addEventListener('click', () => adjustZoom(0.25));
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => adjustZoom(-0.25));
+}
+
+function adjustZoom(delta) {
+    const frame = document.getElementById('cameraFrame');
+    const display = document.getElementById('zoomLevelDisplay');
+    if (!frame) return;
+
+    currentZoom = Math.min(3.0, Math.max(1.0, currentZoom + delta));
+    frame.style.transform = `scale(${currentZoom})`;
+    if (display) {
+        display.textContent = `${currentZoom.toFixed(2)}x`;
+    }
 }
 
 // NEW: Manual Log Submitter & BLE Packager
