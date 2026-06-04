@@ -1,0 +1,5 @@
+# Ignore local Python development server from being built on Vercel
+main.py
+__pycache__/
+venv/
+.git/
