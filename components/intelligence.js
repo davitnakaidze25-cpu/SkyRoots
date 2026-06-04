@@ -4,8 +4,7 @@
 
 import { sensorState } from './sensorState.js';
 
-const API_KEY = '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';
-const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const API_URL = '/api/chat';
 const MODEL = 'llama-3.3-70b-versatile';
 
 let chatHistory = [];
@@ -288,7 +287,7 @@ async function handleSend() {
     streamingBubble = createStreamingBubble();
 
     try {
-        await streamChat(text, API_KEY);
+        await streamChat(text);
     } catch (err) {
         console.error('Grooty error:', err);
         if (streamingBubble) {
@@ -309,7 +308,7 @@ function setSendState(sending) {
 }
 
 // ─── LLM Streaming API Call ───────────────────────────────────────────────────
-async function streamChat(userMessage, apiKey) {
+async function streamChat(userMessage) {
     const messages = [
         { role: 'system', content: getSystemPrompt() },
         ...chatHistory.slice(-6)
@@ -318,13 +317,10 @@ async function streamChat(userMessage, apiKey) {
     const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: MODEL,
             messages: messages,
-            temperature: 0.7,
             stream: true
         })
     });
