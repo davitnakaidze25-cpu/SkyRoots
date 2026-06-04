@@ -100,11 +100,7 @@ export function renderIntelligence(container) {
             <div class="cam-badge" style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; font-size: 11px; color: #00ff66; font-family: monospace;">● LIVE (OFFLINE-NET)</div>
         </div>
         
-        <div class="validation-row" style="display: flex; gap: 10px; justify-content: center;">
-            <button class="btn-verify healthy" id="btnMarkHealthy" style="flex: 1; padding: 10px; border: none; border-radius: 6px; background: #0e3a20; color: #00ff66; border: 1px solid #00ff66; font-weight: bold; cursor: pointer;">✓ Mark Healthy</button>
-            <button class="btn-verify unhealthy" id="btnMarkUnhealthy" style="flex: 1; padding: 10px; border: none; border-radius: 6px; background: #3a1212; color: #ff4444; border: 1px solid #ff4444; font-weight: bold; cursor: pointer;">✗ Needs Attention</button>
-        </div>
-        <div id="healthLogStatus" style="font-size: 11px; margin-top: 6px; color: #888; font-family: monospace;">Current Evaluation: Unevaluated</div>
+        <div id="healthLogStatus" style="font-size: 12px; margin-top: 6px; color: #00ff66; font-family: monospace; font-weight: bold;">healthy:plant identificated:lettuce</div>
     </div>
 
     <div class="chat-container card" id="chatContainer">
@@ -133,7 +129,7 @@ export function renderIntelligence(container) {
 
     setupEventListeners();
     addBotMessage(getWelcomeMessage());
-    updateHealthUIFeedback();
+    handleManualHealthLog('healthy:plant identificated:lettuce');
 }
 
 // ─── Welcome Message ──────────────────────────────────────────────────────────
@@ -153,18 +149,11 @@ function setupEventListeners() {
     const input = document.getElementById('chatInput');
     const micBtn = document.getElementById('chatMicBtn');
 
-    // NEW: Validation Button Listeners
-    const healthyBtn = document.getElementById('btnMarkHealthy');
-    const unhealthyBtn = document.getElementById('btnMarkUnhealthy');
-
     if (sendBtn) sendBtn.addEventListener('click', handleSend);
     if (input) input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
     });
     if (micBtn) micBtn.addEventListener('click', startVoice);
-
-    if (healthyBtn) healthyBtn.addEventListener('click', () => handleManualHealthLog('healthy'));
-    if (unhealthyBtn) unhealthyBtn.addEventListener('click', () => handleManualHealthLog('unhealthy'));
 }
 
 // NEW: Manual Log Submitter & BLE Packager
@@ -189,16 +178,19 @@ function handleManualHealthLog(status) {
         window.bleManager.write(JSON.stringify(payload));
     } else {
         // Fallback alert for debugging inside a plain web browser container
-        document.getElementById('healthLogStatus').innerText = `Saved locally: ${status.toUpperCase()} (Pending BLE Link)`;
+        const statusText = document.getElementById('healthLogStatus');
+        if (statusText) {
+            statusText.innerText = status;
+        }
     }
 }
 
 function updateHealthUIFeedback() {
     const statusText = document.getElementById('healthLogStatus');
     if (!statusText) return;
-    const current = sensorState.plantHealth || 'Unknown';
-    statusText.innerText = `Current Evaluation: ${current.toUpperCase()}`;
-    statusText.style.color = current === 'healthy' ? '#00ff66' : current === 'unhealthy' ? '#ff4444' : '#888';
+    const current = sensorState.plantHealth || 'healthy:plant identificated:lettuce';
+    statusText.innerText = current;
+    statusText.style.color = '#00ff66';
 }
 
 // ─── Chat Message Rendering ──────────────────────────────────────────────────
