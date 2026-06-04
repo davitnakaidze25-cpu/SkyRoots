@@ -4,7 +4,7 @@
 
 import { sensorState } from './sensorState.js';
 
-const API_KEY = 'gsk_' + 'vhb1svVTenX2wrlILmlrWGdyb3FYlhlSkZEsyYj5Jf6rGYkNMJnA';
+const API_KEY = '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';
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL = 'llama-3.3-70b-versatile';
 
