@@ -109,7 +109,7 @@ export function renderIntelligence(container) {
             </div>
         </div>
         
-        <div id="healthLogStatus" style="font-size: 12px; margin-top: 6px; color: #00ff66; font-family: monospace; font-weight: bold;">healthy:plant identificated:lettuce</div>
+        <div id="healthLogStatus" style="font-size: 12px; margin-top: 6px; color: #A9A9A9; font-family: monospace; font-weight: bold;">plant identificated:Unknow</div>
     </div>
 
     <div class="chat-container card" id="chatContainer">
