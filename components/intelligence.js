@@ -138,7 +138,7 @@ export function renderIntelligence(container) {
 
     setupEventListeners();
     addBotMessage(getWelcomeMessage());
-    handleManualHealthLog('healthy:plant identificated:lettuce');
+    handleManualHealthLog('Plant identificated:Unknow');
 }
 
 // ─── Welcome Message ──────────────────────────────────────────────────────────
