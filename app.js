@@ -18,7 +18,7 @@ const CHAR_WRITE_UUID   = "826a2d07-2831-411f-9988-3a9d91f2d658";
 const PROFILES = {
     "Cucumber":    { mist: 180, uv: 12, t: 24, h: 75, icon: "🥒" },
     "Tomato":      { mist: 300, uv: 14, t: 22, h: 65, icon: "🍅" },
-    "Lettuce":     { mist: 600, uv: 10, t: 18, h: 60, icon: "🥬" },
+    "Lettuce":     { mist: 600, uv: 10, t: 22, h: 60, icon: "🥬" },
     "Cauliflower": { mist: 450, uv: 12, t: 20, h: 70, icon: "🥦" },
     "Clover":      { mist: 120, uv: 10, t: 21, h: 72, icon: "🍀" }
 };
