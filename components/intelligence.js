@@ -6,10 +6,17 @@ import { sensorState } from './sensorState.js';
 
 const API_URL = '/api/chat';
 const MODEL = 'llama-3.3-70b-versatile';
+const CAMERA_STREAM_URL = 'http://192.168.4.1/capture';
+const PREDICTIONS_URL = 'http://192.168.4.1/preds';
+const PREDICTION_POLL_MS = 1000;
+const VIDEO_REFRESH_MS = 275;
 
 let chatHistory = [];
 let isStreaming = false;
 let streamingBubble = null;
+let cameraRefreshInterval = null;
+let predictionPollInterval = null;
+let predictionPollInFlight = false;
 
 // ─── System Prompt Builder ────────────────────────────────────────────────────
 function getSystemPrompt() {
@@ -68,7 +75,8 @@ VITALITY REPORT FORMAT:
 - **Misting**: [status]
 - **Recommendation**: [actionable advice based on system state]`;
 }
-
+        startCameraRefreshLoop();
+        startPredictionPolling();
 // ─── Markdown Renderer ────────────────────────────────────────────────────────
 function renderMarkdown(text) {
     let html = text
@@ -99,8 +107,8 @@ export function renderIntelligence(container) {
 
     <div class="camera-card card" style="margin-bottom: 15px; padding: 12px; text-align: center;">
         <div class="camera-stream-container" style="background: #111; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 4/3; max-height: 280px; margin: 0 auto 12px;">
-            <iframe id="cameraFrame" src="http://192.168.4.1/" style="width: 100%; height: 100%; border: none; transition: transform 0.2s ease; transform-origin: center center;" title="Live Bio-Dome Stream"></iframe>
-            <div class="cam-badge" style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; font-size: 11px; color: #00ff66; font-family: monospace;">● LIVE (OFFLINE-NET)</div>
+            <img id="liveVideo" src="${CAMERA_STREAM_URL}?t=${Date.now()}" style="width: 100%; height: 100%; object-fit: cover; display: block; border: none; transition: transform 0.2s ease; transform-origin: center center;" alt="Bio-Dome camera frame" title="Live Bio-Dome Stream" />
+            <div class="cam-badge" style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; font-size: 11px; color: #00ff66; font-family: monospace;">● LIVE</div>
             
             <div class="cam-controls" style="position: absolute; bottom: 8px; right: 8px; display: flex; gap: 6px; background: rgba(0,0,0,0.6); padding: 4px; border-radius: 6px; backdrop-filter: blur(4px); z-index: 10; border: 1px solid rgba(255,255,255,0.15);">
                 <button id="btnZoomOut" style="background: none; border: none; color: #fff; font-size: 16px; font-weight: bold; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">−</button>
@@ -109,7 +117,7 @@ export function renderIntelligence(container) {
             </div>
         </div>
         
-        <div id="healthLogStatus" style="font-size: 12px; margin-top: 6px; color: #A9A9A9; font-family: monospace; font-weight: bold;">plant identificated:Unknow</div>
+        <div id="healthLogStatus" style="font-size: 12px; margin-top: 6px; color: #A9A9A9; font-family: monospace; font-weight: bold;">Waiting for ML guess...</div>
     </div>
 
     <div class="chat-container card" id="chatContainer">
@@ -138,7 +146,9 @@ export function renderIntelligence(container) {
 
     setupEventListeners();
     addBotMessage(getWelcomeMessage());
-    handleManualHealthLog('Plant identificated:Unknow');
+    handleManualHealthLog('Waiting for ML guess...');
+    startCameraRefreshLoop();
+    startPredictionPolling();
 }
 
 // ─── Welcome Message ──────────────────────────────────────────────────────────
@@ -171,7 +181,7 @@ function setupEventListeners() {
 }
 
 function adjustZoom(delta) {
-    const frame = document.getElementById('cameraFrame');
+    const frame = document.getElementById('liveVideo');
     const display = document.getElementById('zoomLevelDisplay');
     if (!frame) return;
 
@@ -182,28 +192,44 @@ function adjustZoom(delta) {
     }
 }
 
+function startCameraRefreshLoop() {
+    if (cameraRefreshInterval) clearInterval(cameraRefreshInterval);
+
+    const refreshFrame = () => {
+        const video = document.getElementById('liveVideo');
+        if (!video) return;
+
+        const preload = new Image();
+        preload.onload = () => {
+            video.src = preload.src;
+        };
+        preload.onerror = () => {
+            console.debug('ESP32-CAM frame refresh failed; keeping last good frame');
+        };
+        preload.src = `${CAMERA_STREAM_URL}?t=${Date.now()}`;
+    };
+
+    refreshFrame();
+    cameraRefreshInterval = setInterval(refreshFrame, VIDEO_REFRESH_MS);
+}
+
 // NEW: Manual Log Submitter & BLE Packager
 function handleManualHealthLog(status) {
-    // 1. Update our central state so the AI can read it immediately
     sensorState.plantHealth = status;
     updateHealthUIFeedback();
 
-    // 2. Build the exact JSON package your main ESP32 is expecting
     const payload = {
-        plant: sensorState.activeProfile || "SkyRoots_Crop",
+        plant: sensorState.activeProfile || 'SkyRoots_Crop',
         mist_int: sensorState.profileData?.mist || 300,
         uv_hrs: sensorState.profileData?.uv || 12,
         health: status
     };
 
-    console.log("Transmitting BLE Packet to AeroGrow_ESP32:", payload);
+    console.log('Transmitting BLE Packet to AeroGrow_ESP32:', payload);
 
-    // 3. HOOK FOR YOUR APP'S BLE TRANSMITTER:
-    // If your app exposes a global BLE writing function, invoke it here:
     if (window.bleManager && typeof window.bleManager.write === 'function') {
         window.bleManager.write(JSON.stringify(payload));
     } else {
-        // Fallback alert for debugging inside a plain web browser container
         const statusText = document.getElementById('healthLogStatus');
         if (statusText) {
             statusText.innerText = status;
@@ -217,6 +243,74 @@ function updateHealthUIFeedback() {
     const current = sensorState.plantHealth || 'healthy:plant identificated:lettuce';
     statusText.innerText = current;
     statusText.style.color = '#00ff66';
+}
+
+// Read the ESP32-CAM classifier without allowing a slow request to overlap the next poll.
+function startPredictionPolling() {
+    if (predictionPollInterval) clearInterval(predictionPollInterval);
+    updatePlantPrediction();
+    predictionPollInterval = setInterval(updatePlantPrediction, PREDICTION_POLL_MS);
+}
+
+async function updatePlantPrediction() {
+    if (predictionPollInFlight) return;
+    predictionPollInFlight = true;
+
+    try {
+        const response = await fetch(`${PREDICTIONS_URL}?t=${Date.now()}`, {
+            cache: 'no-store',
+            mode: 'cors'
+        });
+        if (!response.ok) throw new Error(`ESP32 returned ${response.status}`);
+
+        const predictionData = await response.json();
+        const predictions = extractPredictions(predictionData);
+        if (!predictions.length) throw new Error('No classification probabilities found');
+
+        predictions.sort((a, b) => b.probability - a.probability);
+        const bestPrediction = predictions[0];
+        const diagnosisLabel = String(bestPrediction.label).replace(/[_-]+/g, ' ').trim();
+        const diagnosisPercent = (bestPrediction.probability * 100).toFixed(1);
+        const diagnosisText = `Plant identified: ${diagnosisLabel} (${diagnosisPercent}%)`;
+
+        sensorState.plantHealth = diagnosisText;
+        const statusText = document.getElementById('healthLogStatus');
+        if (statusText) {
+            statusText.textContent = diagnosisText;
+            statusText.style.color = '#00ff66';
+        }
+    } catch (error) {
+        console.debug('ESP32-CAM prediction poll failed:', error.message);
+    } finally {
+        predictionPollInFlight = false;
+    }
+}
+
+function extractPredictions(data) {
+    const source = data?.predictions || data?.probabilities || data?.results || data;
+    if (Array.isArray(source)) {
+        return source.map((item) => {
+            if (typeof item === 'number') return null;
+            const label = item.label || item.class || item.name;
+            const probability = Number(item.probability ?? item.confidence ?? item.score);
+            return label && Number.isFinite(probability) ? { label, probability: normalizeProbability(probability) } : null;
+        }).filter(Boolean);
+    }
+
+    if (source && typeof source === 'object') {
+        return Object.entries(source).map(([label, value]) => {
+            const probability = typeof value === 'object'
+                ? Number(value.probability ?? value.confidence ?? value.score)
+                : Number(value);
+            return Number.isFinite(probability) ? { label, probability: normalizeProbability(probability) } : null;
+        }).filter(Boolean);
+    }
+
+    return [];
+}
+
+function normalizeProbability(probability) {
+    return probability > 1 ? probability / 100 : probability;
 }
 
 // ─── Chat Message Rendering ──────────────────────────────────────────────────
@@ -408,3 +502,4 @@ function startVoice() {
 
     recognition.start();
 }
+
