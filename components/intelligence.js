@@ -6,17 +6,19 @@ import { sensorState } from './sensorState.js';
 
 const API_URL = '/api/chat';
 const MODEL = 'llama-3.3-70b-versatile';
-const CAMERA_STREAM_URL = 'http://192.168.4.1/capture';
-const PREDICTIONS_URL = 'http://192.168.4.1/preds';
-const PREDICTION_POLL_MS = 1000;
-const VIDEO_REFRESH_MS = 275;
+const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const CHAR_PREDICTIONS_UUID = 'c1d92f43-2b1e-4a10-9f2e-1a2b3c4d5e01';
+const CHAR_IMAGE_META_UUID = 'c1d92f43-2b1e-4a10-9f2e-1a2b3c4d5e02';
+const CHAR_IMAGE_CHUNK_UUID = 'c1d92f43-2b1e-4a10-9f2e-1a2b3c4d5e03';
+const MAX_IMAGE_SIZE = 48000;
 
 let chatHistory = [];
 let isStreaming = false;
 let streamingBubble = null;
-let cameraRefreshInterval = null;
-let predictionPollInterval = null;
-let predictionPollInFlight = false;
+let expectedImageLen = 0;
+let receivedImageBytes = [];
+let receivedImageLen = 0;
+let cameraCharacteristicsSubscribed = false;
 
 // ─── System Prompt Builder ────────────────────────────────────────────────────
 function getSystemPrompt() {
@@ -75,8 +77,173 @@ VITALITY REPORT FORMAT:
 - **Misting**: [status]
 - **Recommendation**: [actionable advice based on system state]`;
 }
-        startCameraRefreshLoop();
-        startPredictionPolling();
+
+export async function subscribeToCameraCharacteristics() {
+    if (cameraCharacteristicsSubscribed) return;
+
+    setCameraStatus('Waiting for AeroGrow BLE connection...');
+
+    if (!window.bleManager || typeof window.bleManager.getServer !== 'function') {
+        console.error('bleManager.getServer() not available - cannot subscribe to camera characteristics');
+        setCameraStatus('Connect to AeroGrow in Settings');
+        return;
+    }
+
+    try {
+        const server = await window.bleManager.getServer();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+
+        const predictionsChar = await service.getCharacteristic(CHAR_PREDICTIONS_UUID);
+        await predictionsChar.startNotifications();
+        predictionsChar.addEventListener('characteristicvaluechanged', onPredictionsNotify);
+
+        const imageMetaChar = await service.getCharacteristic(CHAR_IMAGE_META_UUID);
+        await imageMetaChar.startNotifications();
+        imageMetaChar.addEventListener('characteristicvaluechanged', onImageMetaNotify);
+
+        const imageChunkChar = await service.getCharacteristic(CHAR_IMAGE_CHUNK_UUID);
+        await imageChunkChar.startNotifications();
+        imageChunkChar.addEventListener('characteristicvaluechanged', onImageChunkNotify);
+
+        cameraCharacteristicsSubscribed = true;
+        console.log('Subscribed to camera predictions + image characteristics');
+        setCameraStatus('BLE camera channels ready; waiting for camera UART data...');
+        const placeholder = document.getElementById('liveVideoPlaceholder');
+        if (placeholder) placeholder.textContent = 'Waiting for camera UART frame...';
+    } catch (error) {
+        console.error('Failed to subscribe to camera characteristics:', error);
+        setCameraStatus('Camera BLE link unavailable');
+        const statusText = document.getElementById('healthLogStatus');
+        if (statusText) statusText.title = String(error);
+    }
+}
+
+function setCameraStatus(message) {
+    const statusText = document.getElementById('healthLogStatus');
+    if (statusText) statusText.textContent = message;
+}
+
+export function resetCameraCharacteristicsSubscription() {
+    cameraCharacteristicsSubscribed = false;
+    expectedImageLen = 0;
+    receivedImageBytes = [];
+    receivedImageLen = 0;
+    setCameraStatus('Camera disconnected');
+    const placeholder = document.getElementById('liveVideoPlaceholder');
+    if (placeholder) {
+        placeholder.textContent = 'Connect to AeroGrow to view camera';
+        placeholder.style.display = 'flex';
+    }
+}
+
+function onPredictionsNotify(event) {
+    const json = new TextDecoder('utf-8').decode(event.target.value);
+
+    try {
+        applyPredictions(JSON.parse(json));
+    } catch (error) {
+        console.error('Failed to parse predictions JSON:', error, json);
+    }
+}
+
+function applyPredictions(predictions) {
+    let best = null;
+    for (const [label, value] of Object.entries(predictions)) {
+        const probability = Number(value);
+        if (!Number.isFinite(probability)) continue;
+        if (!best || probability > best.value) best = { label, value: probability };
+    }
+    if (!best) return;
+
+    const diagnosisText = `Plant identified: ${best.label} (${(best.value * 100).toFixed(1)}%)`;
+    sensorState.plantHealth = diagnosisText;
+
+    const statusText = document.getElementById('healthLogStatus');
+    if (statusText) {
+        statusText.textContent = diagnosisText;
+        statusText.style.color = '#00ff66';
+    }
+}
+
+function onImageMetaNotify(event) {
+    const view = event.target.value;
+    if (view.byteLength !== 4) {
+        console.error('Invalid camera image metadata length:', view.byteLength);
+        resetImageTransfer();
+        return;
+    }
+
+    expectedImageLen = view.getUint32(0, true);
+    if (expectedImageLen === 0 || expectedImageLen > MAX_IMAGE_SIZE) {
+        console.error('Camera image size is invalid:', expectedImageLen);
+        resetImageTransfer();
+        return;
+    }
+
+    receivedImageBytes = [];
+    receivedImageLen = 0;
+    const placeholder = document.getElementById('liveVideoPlaceholder');
+    if (placeholder) placeholder.textContent = 'Receiving camera frame...';
+}
+
+function onImageChunkNotify(event) {
+    if (expectedImageLen === 0) return;
+
+    const view = event.target.value;
+    const chunk = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    if (receivedImageLen + chunk.byteLength > expectedImageLen) {
+        console.error('Camera image transfer exceeded announced length');
+        resetImageTransfer();
+        return;
+    }
+
+    receivedImageBytes.push(chunk);
+    receivedImageLen += chunk.byteLength;
+
+    if (receivedImageLen === expectedImageLen) {
+        assembleAndDisplayImage();
+    }
+}
+
+function resetImageTransfer() {
+    expectedImageLen = 0;
+    receivedImageBytes = [];
+    receivedImageLen = 0;
+}
+
+function assembleAndDisplayImage() {
+    const combined = new Uint8Array(expectedImageLen);
+    let offset = 0;
+    for (const chunk of receivedImageBytes) {
+        combined.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+
+    const url = URL.createObjectURL(new Blob([combined], { type: 'image/jpeg' }));
+    const preload = new Image();
+    preload.onload = () => {
+        const video = document.getElementById('liveVideo');
+        if (video) {
+            const oldUrl = video.dataset.blobUrl;
+            video.src = url;
+            video.dataset.blobUrl = url;
+            const placeholder = document.getElementById('liveVideoPlaceholder');
+            if (placeholder) placeholder.style.display = 'none';
+            if (oldUrl) URL.revokeObjectURL(oldUrl);
+        } else {
+            URL.revokeObjectURL(url);
+        }
+    };
+    preload.onerror = () => {
+        console.error('Received camera frame is not a valid JPEG image');
+        URL.revokeObjectURL(url);
+        const placeholder = document.getElementById('liveVideoPlaceholder');
+        if (placeholder) placeholder.textContent = 'Frame received, but JPEG is invalid';
+    };
+    preload.src = url;
+
+    resetImageTransfer();
+}
 // ─── Markdown Renderer ────────────────────────────────────────────────────────
 function renderMarkdown(text) {
     let html = text
@@ -107,8 +274,9 @@ export function renderIntelligence(container) {
 
     <div class="camera-card card" style="margin-bottom: 15px; padding: 12px; text-align: center;">
         <div class="camera-stream-container" style="background: #111; border-radius: 8px; overflow: hidden; position: relative; aspect-ratio: 4/3; max-height: 280px; margin: 0 auto 12px;">
-            <img id="liveVideo" src="${CAMERA_STREAM_URL}?t=${Date.now()}" style="width: 100%; height: 100%; object-fit: cover; display: block; border: none; transition: transform 0.2s ease; transform-origin: center center;" alt="Bio-Dome camera frame" title="Live Bio-Dome Stream" />
-            <div class="cam-badge" style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; font-size: 11px; color: #00ff66; font-family: monospace;">● LIVE</div>
+            <img id="liveVideo" style="width: 100%; height: 100%; object-fit: cover; display: block; border: none; transition: transform 0.2s ease; transform-origin: center center;" alt="" aria-label="Bio-Dome camera frame" title="Live Bio-Dome Stream" />
+            <div id="liveVideoPlaceholder" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #858b8c; font: 13px monospace;">Connect to AeroGrow to view camera</div>
+            <div class="cam-badge" style="position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 4px; font-size: 11px; color: #00ff66; font-family: monospace; z-index: 3;">● BLE</div>
             
             <div class="cam-controls" style="position: absolute; bottom: 8px; right: 8px; display: flex; gap: 6px; background: rgba(0,0,0,0.6); padding: 4px; border-radius: 6px; backdrop-filter: blur(4px); z-index: 10; border: 1px solid rgba(255,255,255,0.15);">
                 <button id="btnZoomOut" style="background: none; border: none; color: #fff; font-size: 16px; font-weight: bold; width: 28px; height: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">−</button>
@@ -146,9 +314,7 @@ export function renderIntelligence(container) {
 
     setupEventListeners();
     addBotMessage(getWelcomeMessage());
-    handleManualHealthLog('Waiting for ML guess...');
-    startCameraRefreshLoop();
-    startPredictionPolling();
+    setCameraStatus('Connect to AeroGrow in Settings');
 }
 
 // ─── Welcome Message ──────────────────────────────────────────────────────────
@@ -192,27 +358,6 @@ function adjustZoom(delta) {
     }
 }
 
-function startCameraRefreshLoop() {
-    if (cameraRefreshInterval) clearInterval(cameraRefreshInterval);
-
-    const refreshFrame = () => {
-        const video = document.getElementById('liveVideo');
-        if (!video) return;
-
-        const preload = new Image();
-        preload.onload = () => {
-            video.src = preload.src;
-        };
-        preload.onerror = () => {
-            console.debug('ESP32-CAM frame refresh failed; keeping last good frame');
-        };
-        preload.src = `${CAMERA_STREAM_URL}?t=${Date.now()}`;
-    };
-
-    refreshFrame();
-    cameraRefreshInterval = setInterval(refreshFrame, VIDEO_REFRESH_MS);
-}
-
 // NEW: Manual Log Submitter & BLE Packager
 function handleManualHealthLog(status) {
     sensorState.plantHealth = status;
@@ -246,73 +391,6 @@ function updateHealthUIFeedback() {
 }
 
 // Read the ESP32-CAM classifier without allowing a slow request to overlap the next poll.
-function startPredictionPolling() {
-    if (predictionPollInterval) clearInterval(predictionPollInterval);
-    updatePlantPrediction();
-    predictionPollInterval = setInterval(updatePlantPrediction, PREDICTION_POLL_MS);
-}
-
-async function updatePlantPrediction() {
-    if (predictionPollInFlight) return;
-    predictionPollInFlight = true;
-
-    try {
-        const response = await fetch(`${PREDICTIONS_URL}?t=${Date.now()}`, {
-            cache: 'no-store',
-            mode: 'cors'
-        });
-        if (!response.ok) throw new Error(`ESP32 returned ${response.status}`);
-
-        const predictionData = await response.json();
-        const predictions = extractPredictions(predictionData);
-        if (!predictions.length) throw new Error('No classification probabilities found');
-
-        predictions.sort((a, b) => b.probability - a.probability);
-        const bestPrediction = predictions[0];
-        const diagnosisLabel = String(bestPrediction.label).replace(/[_-]+/g, ' ').trim();
-        const diagnosisPercent = (bestPrediction.probability * 100).toFixed(1);
-        const diagnosisText = `Plant identified: ${diagnosisLabel} (${diagnosisPercent}%)`;
-
-        sensorState.plantHealth = diagnosisText;
-        const statusText = document.getElementById('healthLogStatus');
-        if (statusText) {
-            statusText.textContent = diagnosisText;
-            statusText.style.color = '#00ff66';
-        }
-    } catch (error) {
-        console.debug('ESP32-CAM prediction poll failed:', error.message);
-    } finally {
-        predictionPollInFlight = false;
-    }
-}
-
-function extractPredictions(data) {
-    const source = data?.predictions || data?.probabilities || data?.results || data;
-    if (Array.isArray(source)) {
-        return source.map((item) => {
-            if (typeof item === 'number') return null;
-            const label = item.label || item.class || item.name;
-            const probability = Number(item.probability ?? item.confidence ?? item.score);
-            return label && Number.isFinite(probability) ? { label, probability: normalizeProbability(probability) } : null;
-        }).filter(Boolean);
-    }
-
-    if (source && typeof source === 'object') {
-        return Object.entries(source).map(([label, value]) => {
-            const probability = typeof value === 'object'
-                ? Number(value.probability ?? value.confidence ?? value.score)
-                : Number(value);
-            return Number.isFinite(probability) ? { label, probability: normalizeProbability(probability) } : null;
-        }).filter(Boolean);
-    }
-
-    return [];
-}
-
-function normalizeProbability(probability) {
-    return probability > 1 ? probability / 100 : probability;
-}
-
 // ─── Chat Message Rendering ──────────────────────────────────────────────────
 function addBotMessage(text) {
     const container = document.getElementById('chatMessages');

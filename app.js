@@ -6,7 +6,7 @@
 import { renderDashboard, updateDashboard, setConnectionStatus, setActiveProfile } from './components/dashboard.js';
 import { renderProfiles, showPreview, triggerUploadAnimation } from './components/profiles.js';
 import { renderSettings, appendLog, setScanState } from './components/settings.js';
-import { renderIntelligence } from './components/intelligence.js';
+import { renderIntelligence, subscribeToCameraCharacteristics, resetCameraCharacteristicsSubscription } from './components/intelligence.js';
 import { addLogEntry } from './components/sensorState.js';
 import { initThemeManager } from './components/themeManager.js';
 
@@ -73,6 +73,8 @@ async function connectDevice() {
         await notifyCharacteristic.startNotifications();
         notifyCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
 
+        await subscribeToCameraCharacteristics();
+
         // UI: mark connected
         const dot = document.getElementById('connectionDot');
         if (dot) dot.classList.add('connected');
@@ -100,6 +102,7 @@ function disconnectDevice() {
 }
 
 function onDisconnected() {
+    resetCameraCharacteristicsSubscription();
     const dot = document.getElementById('connectionDot');
     if (dot) dot.classList.remove('connected');
     setConnectionStatus(false);
@@ -164,6 +167,18 @@ async function uploadProfile() {
 window._connectDevice    = connectDevice;
 window._disconnectDevice = disconnectDevice;
 window._uploadProfile    = uploadProfile;
+window.bleManager = {
+    getServer: () => gattServer,
+    write: async (payload) => {
+        if (!gattServer || !gattServer.connected || !writeCharacteristic) {
+            return false;
+        }
+
+        const encoder = new TextEncoder();
+        await writeCharacteristic.writeValue(encoder.encode(payload));
+        return true;
+    }
+};
 
 // ─── INITIALIZE APP ───────────────────────────────────────────────────────────
 async function init() {

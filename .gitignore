@@ -3,4 +3,15 @@ __pycache__/
 .venv/
 .env
 **/.env
+.env.local
+**/.env.local
+SkyRoots-main/
+
+
+
+.venv/
+.env
+**/.env
+.env.local
+**/.env.local
 SkyRoots-main/

@@ -51,3 +51,17 @@ Cloud analytics
 
 📌 Status:
 🚧 Early-stage prototype, actively developing
+
+## Groq API setup
+
+Grooty calls Groq from the server-side `/api/chat` function. Keep the API key out of frontend code and source control.
+
+For Vercel:
+
+1. Create an API key in the Groq console.
+2. In the Vercel project, open **Settings > Environment Variables** and add `GROQ_API_KEY` with the key value. Enable it for the deployment environments you use, then redeploy.
+3. Optionally add `GROQ_MODEL` to select a model available to your Groq account. The default is `llama-3.3-70b-versatile`.
+
+For local API testing, install the Vercel CLI, run `vercel env pull .env.local`, then run `vercel dev`. The `.env.local` file is ignored by Git. `python main.py` serves the static frontend only and does not run the `/api/chat` function.
+
+An API key identifies your account; it does not increase the provider's quota by itself. Before the demo, check Groq's current account limits and billing, and confirm that the selected model has enough available usage for your expected traffic. Never put the key in browser JavaScript or commit it to the repository.
