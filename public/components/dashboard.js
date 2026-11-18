@@ -3,7 +3,8 @@
 // Indicators, Growth Timeline, Plant Wireframe, Sparkline Aura Charts.
 // Pure presentation layer. All data arrives via updateDashboard(data).
 
-import { updateSensorState, setConnectedState, setProfileState } from './sensorState.js';
+import { sensorState, updateSensorState, setConnectedState, setProfileState } from './sensorState.js';
+import { icon } from './icons.js';
 
 const TEMP_MIN = 0, TEMP_MAX = 50;
 const HUM_MIN = 0, HUM_MAX = 100;
@@ -14,51 +15,25 @@ const tempHistory = [];
 const humHistory = [];
 const MAX_HISTORY = 24;
 
-// ─── 3D Gauge Builder ─────────────────────────────────────────────────────────
-function buildGauge({ size = 148, stroke = 10, label, unit, valueId, ringId, sparkId }) {
-    const r = (size / 2) - stroke - 8;
-    const circ = 2 * Math.PI * r;
-    const tickR = r + stroke / 2 + 5;
-    const tickCirc = 2 * Math.PI * tickR;
-    const tickCount = 40;
-    const tickGap = (tickCirc / tickCount) - 1.5;
-    const cx = size / 2;
-    const cy = size / 2;
-
-    return `
-    <div class="gauge-cluster">
-        <div class="gauge-body">
-            <svg class="gauge-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-                <circle class="gauge-ticks"
-                    cx="${cx}" cy="${cy}" r="${tickR}"
-                    stroke-width="3" fill="none"
-                    stroke-dasharray="1.5 ${tickGap.toFixed(1)}"/>
-                <circle class="ring-track"
-                    cx="${cx}" cy="${cy}" r="${r}"
-                    stroke-width="${stroke}" fill="none"/>
-                <circle class="ring-fill" id="${ringId}"
-                    cx="${cx}" cy="${cy}" r="${r}"
-                    stroke-width="${stroke}" fill="none"
-                    stroke-dasharray="${circ.toFixed(1)}"
-                    stroke-dashoffset="${circ.toFixed(1)}"
-                    stroke-linecap="round"
-                    transform="rotate(-90 ${cx} ${cy})"/>
+// ─── Sensor Cards ─────────────────────────────────────────────────────────────
+function buildSensor({ label, unit, valueId, sparkId, kind }) {
+    return `<div class="sensor-card" id="${valueId}Card">
+        <div class="sensor-heading">${icon(kind)}<span>${label}</span></div>
+        <div class="sensor-reading"><span id="${valueId}">—</span><span class="sensor-unit">${unit}</span></div>
+        <div class="sensor-footer"><span class="sensor-condition" id="${valueId}Status">No reading</span>
+            <svg class="sparkline" id="${sparkId}" viewBox="0 0 120 28" preserveAspectRatio="none" aria-label="Recent readings">
+                <polyline class="spark-area" points="" stroke="none"/><polyline class="spark-line" points="" fill="none" stroke-width="2"/>
             </svg>
-            <div class="ring-center">
-                <div class="ring-value" id="${valueId}">--</div>
-                <div class="ring-unit">${unit}</div>
-            </div>
         </div>
-        <div class="ring-label">${label}</div>
-        <svg class="sparkline" id="${sparkId}" viewBox="0 0 120 28" preserveAspectRatio="none">
-            <polyline class="spark-area" points="" stroke="none"/>
-            <polyline class="spark-line" points="" fill="none" stroke-width="1.5"/>
-        </svg>
     </div>`;
+}
+function setSensorStatus(id, color) {
+    document.getElementById(id + 'Card').dataset.state = color;
+    document.getElementById(id + 'Status').textContent = color === 'ring-green' ? 'In range' : 'Check reading';
 }
 
 // ─── Hardware Indicator Builder ───────────────────────────────────────────────
-function buildIndicator({ id, icon, label }) {
+function buildIndicator({ id, kind, label }) {
     return `
     <div class="hw-indicator" id="${id}">
         <div class="hw-dot-wrap">
@@ -66,10 +41,10 @@ function buildIndicator({ id, icon, label }) {
             <span class="hw-dot-ring"></span>
         </div>
         <div class="hw-info">
-            <div class="hw-icon">${icon}</div>
+            <div class="hw-icon">${icon(kind)}</div>
             <div class="hw-label">${label}</div>
         </div>
-        <div class="hw-status-text">IDLE</div>
+        <div class="hw-status-text">Not connected</div>
     </div>`;
 }
 
@@ -101,7 +76,6 @@ function buildPlantWireframe() {
 // ─── Growth Timeline Builder ──────────────────────────────────────────────────
 function buildTimeline() {
     const phases = ['SEED', 'SPROUT', 'GROWTH', 'HARVEST'];
-    const phaseIcons = ['✦', '🌱', '🌿', '🌾'];
     return `
     <div class="growth-timeline">
         <div class="timeline-track">
@@ -109,7 +83,7 @@ function buildTimeline() {
         </div>
         <div class="timeline-phases">
             ${phases.map((name, i) => `
-                <div class="phase ${i === 1 ? 'active' : ''}" data-phase="${name.toLowerCase()}">
+                <div class="phase" data-phase="${name.toLowerCase()}">
                     <div class="phase-dot"></div>
                     <span>${name}</span>
                 </div>
@@ -121,75 +95,63 @@ function buildTimeline() {
 // ─── Main Render ──────────────────────────────────────────────────────────────
 export function renderDashboard(container) {
     container.innerHTML = `
-    <!-- Bio-Dome Status Header -->
-    <div class="biodome-header">
-        <div class="biodome-label">BIO-DOME STATUS</div>
-        <div class="biodome-word" id="bioDomeStatus">AWAITING</div>
-    </div>
-
+    <div class="dashboard-heading"><h2 class="screen-title">Your garden</h2></div>
+    <section class="garden-hero card">
+        <div class="hero-copy"><span class="hero-kicker">FOGPONICS</span><h3>Your<br>tower.</h3><a href="#settings" class="hero-link" id="towerAction"><span id="towerActionLabel">Connect tower</span><span aria-hidden="true">↗</span></a></div>
+        <div class="tower-scene" id="dashboardTower" role="img">
+            <img class="hero-tower" src="assets/images/fogponics-tower-clean.png" width="1024" height="1536" alt="">
+            <picture>
+                <source media="(prefers-reduced-motion: no-preference)" srcset="assets/images/fogponics-tower-growing.svg#drift">
+                <img class="tower-growing" src="assets/images/fogponics-tower-growing.svg" width="1024" height="1536" alt="" hidden>
+            </picture>
+        </div>
+        <div class="biodome-header"><span class="biodome-word" id="bioDomeStatus">Ready to connect</span></div>
+    </section>
+    <div class="section-heading"><h3>Environment</h3></div>
     <!-- UV Cycle Timer Card -->
     <div class="card card-timer">
         <div class="card-header-row">
-            <span class="card-eyebrow">UV CYCLE REMAINING</span>
+            <span class="card-eyebrow">UV time left</span>
             <div class="connection-badge" id="db-conn-badge">
                 <span class="conn-dot" id="db-conn-dot"></span>
                 <span id="db-conn-label">Offline</span>
             </div>
         </div>
 
-        <div class="uv-ring-wrap">
-            <svg class="gauge-svg uv-ring-svg" width="200" height="200" viewBox="0 0 200 200">
-                <circle class="gauge-ticks"
-                    cx="100" cy="100" r="92"
-                    stroke-width="2.5" fill="none"
-                    stroke-dasharray="1.2 13.2"/>
-                <circle class="ring-track"
-                    cx="100" cy="100" r="82"
-                    stroke-width="8" fill="none"/>
-                <circle class="ring-fill uv-ring" id="ringUV"
-                    cx="100" cy="100" r="82"
-                    stroke-width="8" fill="none"
-                    stroke-dasharray="515.2"
-                    stroke-dashoffset="515.2"
-                    stroke-linecap="round"
-                    transform="rotate(-90 100 100)"/>
-            </svg>
-            <div class="uv-center">
-                <div class="uv-timer-val" id="uvTimer">--:--:--</div>
-                <div class="uv-timer-sub">hh : mm : ss</div>
-            </div>
-        </div>
+        <div class="light-readout">${icon('sun')}<span id="uvTimer">—</span><span class="light-unit">remaining</span></div>
+        <svg class="light-progress" viewBox="0 0 100 3" preserveAspectRatio="none" aria-hidden="true"><line class="ring-track" x1="0" y1="1.5" x2="100" y2="1.5" stroke-width="3"/><line class="ring-fill" id="ringUV" x1="0" y1="1.5" x2="100" y2="1.5" stroke-width="3" stroke-dasharray="100" stroke-dashoffset="100"/></svg>
 
         <div class="hw-row">
-            ${buildIndicator({ id: 'chipMist', icon: '💧', label: 'Misting' })}
-            ${buildIndicator({ id: 'chipUV', icon: '☀️', label: 'UV Light' })}
+            ${buildIndicator({ id: 'chipMist', kind: 'mist', label: 'Root mist' })}
+            ${buildIndicator({ id: 'chipUV', kind: 'sun', label: 'UV Light' })}
         </div>
     </div>
 
     <!-- Sensor 3D Gauge Cluster -->
     <div class="sensor-ring-grid">
-        ${buildGauge({ size: 148, stroke: 10, label: 'Temperature', unit: '°C', valueId: 'valTemp', ringId: 'ringTemp', sparkId: 'sparkTemp' })}
-        ${buildGauge({ size: 148, stroke: 10, label: 'Humidity', unit: '%', valueId: 'valHum', ringId: 'ringHum', sparkId: 'sparkHum' })}
+        ${buildSensor({ label: 'Temperature', unit: '°C', valueId: 'valTemp', sparkId: 'sparkTemp', kind: 'temperature' })}
+        ${buildSensor({ label: 'Humidity', unit: '%', valueId: 'valHum', sparkId: 'sparkHum', kind: 'mist' })}
     </div>
 
     <!-- Growth Timeline -->
-    <div class="card card-timeline">
-        <div class="card-eyebrow" style="margin-bottom:4px">GROWTH CYCLE</div>
+    <div class="card card-timeline" id="growthCard" hidden>
+        <div class="card-eyebrow" style="margin-bottom:4px">Growth</div>
         ${buildTimeline()}
     </div>
 
     <!-- Plant Wireframe + Active Profile -->
     <div class="card card-profile">
+        <a class="crop-edit-link" href="#profiles" aria-label="Change active crop">Change <span aria-hidden="true">↗</span></a>
         <div class="profile-plant-row">
             ${buildPlantWireframe()}
             <div class="profile-info-section">
-                <div class="card-eyebrow" style="margin-bottom:8px">ACTIVE CONFIGURATION</div>
+                <div class="card-eyebrow" style="margin-bottom:8px">Active crop</div>
                 <div class="profile-active-row">
                     <div class="profile-active-info">
-                        <div class="profile-active-name" id="activeProfileName">No Profile Loaded</div>
-                        <div class="profile-active-detail" id="activeProfileDetails">Connect to sync</div>
-                        <div class="profile-health-row" id="plantHealthRow">
-                            <span class="ph-label">Plant health condition:</span>
+                        <div class="profile-active-name" id="activeProfileName">No crop selected</div>
+                        <div class="profile-active-detail" id="activeProfileDetails">Choose a crop to get started</div>
+                        <div class="profile-health-row" id="plantHealthRow" hidden>
+                            <span class="ph-label">Health:</span>
                             <span class="ph-value" id="healthValue">Unknown</span>
                         </div>
                     </div>
@@ -204,6 +166,14 @@ export function renderDashboard(container) {
         </div>
     </div>
     `;
+    showTowerStage(container.querySelector('.tower-scene'), sensorState.connected);
+}
+
+function showTowerStage(scene, connected) {
+    scene.querySelector('.tower-growing').hidden = !connected;
+    scene.setAttribute('aria-label', connected
+        ? 'SkyRoots growing-stage illustration with leafy plants in six cups and mist inside the tower'
+        : 'SkyRoots tower with three blue growing tiers and six empty planting cups');
 }
 
 // ─── Ring Update Helpers ──────────────────────────────────────────────────────
@@ -301,7 +271,7 @@ export function updateDashboard(data) {
     if (!isNaN(t)) {
         document.getElementById('valTemp').textContent = t.toFixed(1);
         const tColor = getTempColor(t);
-        setRing('ringTemp', (t - TEMP_MIN) / (TEMP_MAX - TEMP_MIN), tColor);
+        setSensorStatus('valTemp', tColor);
         updateSparkline('sparkTemp', tempHistory, t, TEMP_MIN, TEMP_MAX, tColor);
 
         const tempCard = document.querySelector('.sensor-ring-grid');
@@ -317,13 +287,13 @@ export function updateDashboard(data) {
     if (!isNaN(h)) {
         document.getElementById('valHum').textContent = h.toFixed(1);
         const hColor = getHumColor(h);
-        setRing('ringHum', (h - HUM_MIN) / (HUM_MAX - HUM_MIN), hColor);
+        setSensorStatus('valHum', hColor);
         updateSparkline('sparkHum', humHistory, h, HUM_MIN, HUM_MAX, hColor);
     }
 
     // Hardware indicators
-    updateIndicator('chipMist', data.m, 'MISTING', 'IDLE');
-    updateIndicator('chipUV', data.u, 'UV ACTIVE', 'STANDBY');
+    updateIndicator('chipMist', data.m, 'Misting', 'Idle');
+    updateIndicator('chipUV', data.u, 'On', 'Standby');
 
     // UV Timer + ring
     const r = parseInt(data.r);
@@ -344,50 +314,32 @@ export function updateDashboard(data) {
     }
 
     // Dynamic background based on UV state
-    updateBgState(data.u, data.r);
+
 
     // Bio-Dome status
     const status = getBioDomeStatus(t, h);
     const statusEl = document.getElementById('bioDomeStatus');
     if (statusEl) {
-        statusEl.textContent = status.text;
+        statusEl.textContent = status.text.charAt(0) + status.text.slice(1).toLowerCase();
         statusEl.className = 'biodome-word ' + status.cls;
     }
 
+    const health = document.getElementById('healthValue');
+    document.getElementById('plantHealthRow').hidden = !(Number.isFinite(t) && Number.isFinite(h));
+    if (health) health.textContent = Number.isFinite(t) && Number.isFinite(h) ? 'Conditions ' + status.text.toLowerCase() : 'Awaiting readings';
     // Plant wireframe color
     updatePlantColor(t, h);
 
     // Aether Mode — activate when hardware is optimizing
-    const isAether = data.m || data.u;
-    document.body.classList.toggle('aether-mode', !!isAether);
+
 }
 
 function updateIndicator(id, isActive, activeLabel, idleLabel) {
     const el = document.getElementById(id);
-    if (!el) return;
-    const statusEl = el.querySelector('.hw-status-text');
-    if (isActive) {
-        el.classList.add('active');
-        if (statusEl) statusEl.textContent = activeLabel;
-    } else {
-        el.classList.remove('active');
-        if (statusEl) statusEl.textContent = idleLabel;
-    }
-}
-
-function updateBgState(uvOn, uvRemaining) {
-    const body = document.body;
-    body.classList.remove('bg-sunrise', 'bg-midday', 'bg-night');
-    if (!uvOn || parseInt(uvRemaining) === 0) {
-        body.classList.add('bg-night');
-    } else {
-        const r = parseInt(uvRemaining);
-        if (r > 7 * 3600) {
-            body.classList.add('bg-sunrise');
-        } else {
-            body.classList.add('bg-midday');
-        }
-    }
+    if (!el || isActive == null) return;
+    el.dataset.reported = '';
+    el.classList.toggle('active', Boolean(isActive));
+    el.querySelector('.hw-status-text').textContent = isActive ? activeLabel : idleLabel;
 }
 
 // ─── Connection Status ────────────────────────────────────────────────────────
@@ -397,14 +349,27 @@ export function setConnectionStatus(connected) {
     const dot = document.getElementById('db-conn-dot');
     const label = document.getElementById('db-conn-label');
     if (!badge) return;
+    showTowerStage(document.getElementById('dashboardTower'), connected);
+    document.querySelectorAll('.hw-indicator').forEach(indicator => {
+        // A first notification can arrive while the remaining BLE channels are opening.
+        if (connected && indicator.hasAttribute('data-reported')) return;
+        delete indicator.dataset.reported;
+        indicator.classList.remove('active');
+        indicator.querySelector('.hw-status-text').textContent = connected ? 'Awaiting reading' : 'Not connected';
+    });
+    document.getElementById('towerAction').href = connected ? '#camera' : '#settings';
+    document.getElementById('towerActionLabel').textContent = connected ? 'View camera' : 'Connect tower';
     if (connected) {
         badge.classList.add('connected');
         if (dot) dot.classList.add('connected');
         if (label) label.textContent = 'Live';
-        
+        if (document.getElementById('bioDomeStatus').textContent === 'Ready to connect') {
+            document.getElementById('bioDomeStatus').textContent = 'Connected';
+        }
+
         const healthVal = document.getElementById('healthValue');
         if (healthVal) {
-            healthVal.textContent = 'Healthy';
+            healthVal.textContent = 'Awaiting readings';
             healthVal.classList.add('status-healthy');
         }
     } else {
@@ -425,19 +390,26 @@ export function setConnectionStatus(connected) {
         const tEl = document.getElementById('valTemp');
         const hEl = document.getElementById('valHum');
         const uEl = document.getElementById('uvTimer');
-        if (tEl) tEl.textContent = '--';
-        if (hEl) hEl.textContent = '--';
-        if (uEl) uEl.textContent = '--:--:--';
+        if (tEl) tEl.textContent = '—';
+        if (hEl) hEl.textContent = '—';
+        if (uEl) uEl.textContent = '—';
 
         // Reset bio-dome status
         const statusEl = document.getElementById('bioDomeStatus');
         if (statusEl) {
-            statusEl.textContent = 'AWAITING';
+            statusEl.textContent = 'Ready to connect';
             statusEl.className = 'biodome-word status-await';
         }
 
-        // Disable aether mode
-        document.body.classList.remove('aether-mode');
+        document.getElementById('plantHealthRow').hidden = true;
+        tempHistory.length = 0;
+        humHistory.length = 0;
+        uvMaxSeconds = 0;
+        ['valTemp', 'valHum'].forEach(id => {
+            document.getElementById(id + 'Status').textContent = 'No reading';
+            delete document.getElementById(id + 'Card').dataset.state;
+        });
+        document.querySelectorAll('.sparkline polyline').forEach(line => line.setAttribute('points', ''));
     }
 }
 
@@ -461,6 +433,7 @@ export function setActiveProfile(name, data) {
         document.getElementById('psUV').textContent = data.uv;
     }
 
+    document.getElementById('growthCard').hidden = false;
     // Update growth timeline to "SPROUT" phase
     updateGrowthTimeline(1);
 }

@@ -1,5 +1,10 @@
-# Ignore local Python development server from being built on Vercel
+# Project sources and photos outside the deployed app
 main.py
+arduino/
+images/
+docs/
 __pycache__/
 venv/
+.venv/
+.env*
 .git/

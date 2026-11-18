@@ -7,7 +7,7 @@ import time
 
 # --- CONFIGURATION ---
 PORT = 8000
-DIRECTORY = "."
+DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public")
 
 class AeroHandler(http.server.SimpleHTTPRequestHandler):
     """
@@ -27,7 +27,7 @@ class AeroHandler(http.server.SimpleHTTPRequestHandler):
 
 def run_system():
     # 1. Setup the specific folder
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(DIRECTORY)
     
     # 2. Define the Server
     handler = AeroHandler

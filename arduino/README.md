@@ -2,8 +2,8 @@
 
 Open and upload each sketch from its own folder:
 
-- `firmware/mainboard/mainboard.ino` runs the BLE sensor board and receives the camera UART packets.
-- `firmware/camera/camera.ino` runs the AI Thinker ESP32-CAM and sends inference results and JPEG frames.
+- The [mainboard sketch](mainboard/mainboard.ino) runs the BLE sensor board and receives the camera UART packets.
+- The [camera sketch](camera/camera.ino) runs the AI Thinker ESP32-CAM and sends inference results and JPEG frames.
 
 Install the ESP32 Arduino board package and the sketch libraries: ESP32 BLE, DHT sensor library, ArduinoJson, Adafruit NeoPixel, and the generated `skyrooty_inferencing` Edge Impulse library. Select an AI Thinker ESP32-CAM board with PSRAM for the camera sketch and Adafruit Feather ESP32-S3 for the main-board sketch.
 

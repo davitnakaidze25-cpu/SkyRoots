@@ -1,67 +1,33 @@
-SkyRoots is a mobile-first system for real-time plant monitoring using low-cost IoT hardware and AI. An ESP32 device collects plant data and sends it via Bluetooth to a mobile app, where AI analyzes conditions and gives simple, actionable insights.
+# SkyRoots
 
-🚀 Overview:
-Plant care is usually reactive—issues like nutrient deficiency or disease are noticed too late. SkyRoots makes it proactive.
-The ESP32 gathers environmental data and sends it to the mobile app, which becomes the core control center: tracking plant health, sending alerts, and guiding users with clear recommendations.
+SkyRoots is a tabletop fogponics prototype for growing fresh food in a small space. The mobile web app connects to the tower over Bluetooth Low Energy. It shows chamber readings, sends crop profiles to the controller, and displays camera images and plant-classification results when the ESP32-CAM is attached.
 
-🧠 Key Features:
-📡 Real-time monitoring (temperature, humidity, moisture)
-🔵 Bluetooth (BLE) connection — no internet required
-🤖 AI diagnostics for early problem detection
-📊 Smart, simple care recommendations
-🔔 Alerts before issues become critical
+[Open the mobile app](https://sky-roots-rose.vercel.app/) · [See the prototype photos](images/prototypes/) · [Set up the Arduino boards](arduino/README.md)
 
-🏗️ System Flow:
-Sensors → ESP32 → Bluetooth → Mobile App → AI → Insights
+## Using the tower
 
-📱 Mobile App:
-Live plant health dashboard
-AI-based status and suggestions
-Notifications for problems
-Simple control and monitoring in one place
+1. Power on the tower and open the app in a browser that supports Web Bluetooth. Use HTTPS for a hosted copy or localhost for development.
+2. Choose **Connect tower**, then **Connect chamber** and select **AeroGrow_ESP32**. Once connected, the dashboard illustration shows plants in the six cups and mist inside the tower. The illustration returns to its empty state on disconnect.
+3. Open **Crops** to select a profile and send it to the controller. **Home** shows readings from the mainboard. **Camera** shows the latest received JPEG and prediction. **Grooty** can answer questions about the selected crop and chamber readings.
 
-🔬 Why It’s Different:
-Mobile-first experience (app is the brain)
-Low-cost and accessible hardware (ESP32)
-Works offline via Bluetooth
-Focus on early detection, not reaction
+## Repository layout
 
-🌍 Use Cases:
-Home gardening
-Urban farming
-Education & sustainability
+| Folder | Contents |
+| --- | --- |
+| [public/](public/) | Mobile app entry point, styles, JavaScript and web manifest |
+| [public/components/](public/components/) | Dashboard, crop profiles, camera, device connection and Grooty chat |
+| [public/assets/](public/assets/) | App images and icons, the Grooty 3D model, and its bundled renderer |
+| [api/](api/) | Server-side chat function and Python dependencies |
+| [arduino/](arduino/) | Mainboard and ESP32-CAM sketches, wiring and library instructions |
+| [images/](images/) | Prototype photographs, design references and the STEM fair award |
+| [docs/](docs/) | Camera UART and Bluetooth protocol reference |
 
-🛠️ Tech Stack:
-ESP32
-Bluetooth Low Energy (BLE)
-Mobile app (Flutter / React Native)
-AI models / API
+## Local preview
 
-🔧 Setup:
-Flash ESP32
-Connect sensors
-Pair with mobile app
-Start monitoring
+From the repository root, run `python main.py` and open [localhost:8000](http://localhost:8000). This serves the contents of `public/`. The static preview supports the dashboard and hardware connection. To run the chat function locally, start `vercel dev` from the repository root with `GROQ_API_KEY` available to the function.
 
-🔮 Future:
-Camera-based plant analysis
-Disease detection
-Multi-plant tracking
-Cloud analytics
+## Chat and deployment
 
-📌 Status:
-🚧 Early-stage prototype, actively developing
+The browser sends Grooty messages to `/api/chat`. The Python function reads `GROQ_API_KEY` from its environment. Set it in the Vercel project’s environment variables for the environments you deploy and redeploy after changing it. The optional `GROQ_MODEL` setting overrides the default `llama-3.1-8b-instant`. The variable names are in [.env.example](.env.example).
 
-## Groq API setup
-
-Grooty calls Groq from the server-side `/api/chat` function. Keep the API key out of frontend code and source control.
-
-For Vercel:
-
-1. Create an API key in the Groq console.
-2. In the Vercel project, open **Settings > Environment Variables** and add `GROQ_API_KEY` with the key value. Enable it for the deployment environments you use, then redeploy.
-3. Optionally add `GROQ_MODEL` to select a model available to your Groq account. The default is `llama-3.3-70b-versatile`.
-
-For local API testing, install the Vercel CLI, run `vercel env pull .env.local`, then run `vercel dev`. The `.env.local` file is ignored by Git. `python main.py` serves the static frontend only and does not run the `/api/chat` function.
-
-An API key identifies your account; it does not increase the provider's quota by itself. Before the demo, check Groq's current account limits and billing, and confirm that the selected model has enough available usage for your expected traffic. Never put the key in browser JavaScript or commit it to the repository.
+Vercel uses the repository root as the project directory, serves static files from `public/`, and runs the Python function in [api/chat.py](api/chat.py). Bluetooth sensor reads and crop writes go directly between the browser and the tower. Chat requires an internet connection.

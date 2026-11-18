@@ -1,0 +1,27 @@
+SkyRoots camera protocol
+
+Firmware sources: arduino/camera/camera.ino and arduino/mainboard/mainboard.ino.
+Browser receiver: public/components/camera.js.
+
+AI Thinker ESP32-CAM captures 320x240 JPEGs (quality 18), runs the skyrooty
+Edge Impulse model and sends the top label/confidence plus a new JPEG frame.
+Each loop sleeps 5000ms before inference; this is periodic imagery, not video.
+No Wi-Fi stream, IP address, /stream endpoint or phone camera is involved.
+
+Camera GPIO15 TX -> Feather GPIO5 RX; camera GPIO14 RX <- Feather GPIO6 TX.
+Common ground, 3.3V UART, 460800 baud, 8-N-1.
+UART packet: AA 55, type byte P or I, uint32 little-endian payload length,
+payload, XOR checksum of payload. Camera JPEG limit: 48000 bytes.
+
+BLE peripheral: AeroGrow_ESP32
+Service: 4fafc201-1fb5-459e-8fcc-c5c9c331914b
+Predictions: c1d92f43-2b1e-4a10-9f2e-1a2b3c4d5e01 (UTF-8 JSON label:probability)
+Image metadata: c1d92f43-2b1e-4a10-9f2e-1a2b3c4d5e02 (exactly 4 bytes, uint32 LE size)
+Image chunks: c1d92f43-2b1e-4a10-9f2e-1a2b3c4d5e03 (raw JPEG bytes, up to 180 each)
+Firmware requests MTU 247. Host must negotiate enough payload capacity.
+Metadata precedes chunks by 20ms; chunks are separated by 15ms.
+No image sequence IDs or BLE-layer application checksum; browser discards
+incomplete/oversized transfers and invalid JPEGs, recovering at next metadata.
+
+The web app subscribes to these three optional characteristics on the mainboard
+connection. A board without the camera relay can still report sensor readings.

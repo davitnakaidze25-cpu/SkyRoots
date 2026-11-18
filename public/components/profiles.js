@@ -1,3 +1,4 @@
+import { icon, cropIcon } from './icons.js';
 // components/profiles.js
 // Profiles Screen — Crop Selector + Config Preview
 // renderProfiles() builds the UI; selectProfile() handles card selection state.
@@ -12,36 +13,36 @@ export function renderProfiles(container, profiles, onSelect, onUpload) {
 
     container.innerHTML = `
     <div class="profiles-header">
-        <h2 class="screen-title">Select Crop</h2>
-        <span class="screen-subtitle">Choose a profile to sync with your chamber</span>
+        <h2 class="screen-title">My crops</h2>
+        <span class="screen-subtitle">Select a growing profile.</span>
     </div>
 
     <div class="profile-scroll" id="profileScrollContainer"></div>
 
     <div class="card card-preview" id="previewCard" style="display:none;">
-        <div class="card-eyebrow" style="margin-bottom:16px">CONFIGURATION PREVIEW</div>
+        <div class="card-eyebrow" style="margin-bottom:16px">Growing settings</div>
         <div class="preview-hero">
-            <span class="preview-icon" id="prv-icon">🌱</span>
+            <span class="preview-icon" id="prv-icon">${cropIcon('Lettuce')}</span>
             <div class="preview-name" id="prv-name">—</div>
         </div>
         <div class="preview-stats-grid">
             <div class="preview-stat">
-                <div class="ps-label">MIST INTERVAL</div>
+                <div class="ps-label">Mist interval</div>
                 <div class="ps-val" id="preMist">—</div>
                 <div class="ps-unit">seconds</div>
             </div>
             <div class="preview-stat">
-                <div class="ps-label">UV DURATION</div>
+                <div class="ps-label">UV duration</div>
                 <div class="ps-val" id="preUV">—</div>
                 <div class="ps-unit">hours / day</div>
             </div>
             <div class="preview-stat">
-                <div class="ps-label">TARGET TEMP</div>
+                <div class="ps-label">Temperature</div>
                 <div class="ps-val" id="preTemp">—</div>
                 <div class="ps-unit">°C</div>
             </div>
             <div class="preview-stat">
-                <div class="ps-label">TARGET HUMIDITY</div>
+                <div class="ps-label">Humidity</div>
                 <div class="ps-val" id="preHum">—</div>
                 <div class="ps-unit">% RH</div>
             </div>
@@ -52,7 +53,7 @@ export function renderProfiles(container, profiles, onSelect, onUpload) {
                 <polyline points="17 8 12 3 7 8"/>
                 <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            UPLOAD TO ESP32
+            Apply profile
         </button>
     </div>
     `;
@@ -67,20 +68,23 @@ function populateCards(profiles) {
     scroll.innerHTML = '';
 
     for (const [name, data] of Object.entries(profiles)) {
-        const card = document.createElement('div');
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.setAttribute('aria-pressed', 'false');
         card.className = 'profile-card';
         card.dataset.name = name;
         card.innerHTML = `
             <div class="profile-card-glow"></div>
-            <div class="profile-img">${data.icon}</div>
+            <div class="profile-img">${cropIcon(name)}</div>
             <div class="profile-name">${name}</div>
             <div class="profile-meta">
-                <span class="profile-meta-chip">💧 ${data.mist}s</span>
-                <span class="profile-meta-chip">☀️ ${data.uv}h</span>
+                <span class="profile-meta-chip">${icon('mist')} ${data.mist}s</span>
+                <span class="profile-meta-chip">${icon('sun')} ${data.uv}h</span>
             </div>
         `;
         card.addEventListener('click', () => {
-            document.querySelectorAll('.profile-card').forEach(c => c.classList.remove('selected'));
+            document.querySelectorAll('.profile-card').forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-pressed', 'false'); });
+            card.setAttribute('aria-pressed', 'true');
             card.classList.add('selected');
             if (_onSelect) _onSelect(name);
         });
@@ -93,7 +97,7 @@ export function showPreview(name, data) {
     const card = document.getElementById('previewCard');
     if (!card) return;
 
-    document.getElementById('prv-icon').textContent  = data.icon;
+    document.getElementById('prv-icon').innerHTML = cropIcon(name);
     document.getElementById('prv-name').textContent  = name;
     document.getElementById('preMist').textContent   = data.mist;
     document.getElementById('preUV').textContent     = data.uv;
@@ -121,6 +125,6 @@ export function triggerUploadAnimation() {
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        UPLOAD TO ESP32`;
+        Apply profile`;
     }, 2500);
 }
